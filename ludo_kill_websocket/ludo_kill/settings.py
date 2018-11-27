@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'websocket',
     'channels'
 ]
@@ -156,7 +157,7 @@ MESSAGE_TYPES_LIST = [
     MSG_TYPE_LEAVE,
 ]
 
-
+SESSION_SAVE_EVERY_REQUEST = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/2.1/howto/static-files/
 

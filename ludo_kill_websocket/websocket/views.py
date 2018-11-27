@@ -3,12 +3,29 @@ from rest_framework import status
 from rest_framework.parsers import JSONParser
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .serializers import UserSerializer, DeleteUserSerializer, CreateRoomSerializer
-import json
+from .serializers import UserSerializer, DeleteUserSerializer, CreateRoomSerializer, JoinRoomSerializer
 import sys
 from django.contrib.auth import authenticate, login, logout
 from .models import Room
+import websockets
+import asyncio
+import json
+from rest_framework.views import APIView
+from rest_framework.authtoken.models import Token
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+from rest_framework.permissions import AllowAny
+from rest_framework.parsers import JSONParser
 
+async def test_websocket(payload=None):
+    # Trying to connect an user to a given room name
+    async with websockets.connect('ws://127.0.0.1:8000/chat/' + payload["room"] +"/") as websocket:
+    #async with websockets.connect('ws://127.0.0.1:8000/webchat/') as websocket:
+        greeting = json.loads(await websocket.recv())["message"]
+        print("response received < {}".format(greeting))
+        await websocket.send(data=json.dumps(payload))
+        print(">payload send :: {}".format(payload))
+        greeting = json.loads(await websocket.recv())["message"]
+        print("response received < {}".format(greeting))
 
 def is_json(myjson):
     try:
@@ -108,8 +125,10 @@ def login_user(request):
             password = info['password']
             user = authenticate(request, username=username, password=password)
             if user is not None:
+                token_key, token = Token.objects.get_or_create(user=user)
                 login(request, user)
-                return JsonResponse({"status_code": status.HTTP_200_OK, "user_type": user.is_authenticated,
+                return JsonResponse({"username":username, "status_code": status.HTTP_200_OK,
+                                     "user_type": user.is_authenticated, "token": token_key.key,
                                      "status": "Success"})
             else:
                 return JsonResponse({"status_code": status.HTTP_400_BAD_REQUEST, "user_type": user.is_authenticated,
@@ -142,10 +161,10 @@ def create_room(request):
             info = serializer.validated_data
             room_obj, state = Room.objects.get_or_create(title=info["title"])
             if state:
-                return JsonResponse({"data": "Room is created with title: {}".format(info['title']),
+                return JsonResponse({"room_name": room_obj.title, "data": "Room is created with title: {}".format(info['title']),
                                      "status_code": status.HTTP_201_CREATED, "status": "Success"})
             else:
-                return JsonResponse({"data": "Room is already exist with title: {}".format(info['title']),
+                return JsonResponse({"room_name": room_obj.title, "data": "Room is already exist with title: {}".format(info['title']),
                                      "status_code": status.HTTP_200_OK, "status": "Already exist"})
         else:
             return JsonResponse({"data": "Invalid Payload to create room..", "status_code": status.HTTP_400_BAD_REQUEST,
@@ -155,3 +174,36 @@ def create_room(request):
         return JsonResponse({"status_code": status.HTTP_400_BAD_REQUEST, "data": "Invalid HTTP Method is selected",
                              "status": "Fail"})
 
+# @csrf_exempt
+# def join_room(request, room_name=None):
+class JoinRoom(APIView):
+    authentication_classes = (TokenAuthentication,)
+    parser_classes = (JSONParser,)
+    permission_classes = (AllowAny,)
+
+    def post(self, request, format=None):
+        serializer = JoinRoomSerializer(data=request.data)
+        if serializer.is_valid():
+            info = serializer.validated_data
+            print(request.get_host())
+            if request.user.is_authenticated:
+                socket_payload = {"command": "join", "room": info['room_name'], "username": request.user.username}
+                coroutine = test_websocket(payload=socket_payload)
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = None
+                try:
+                    result = loop.run_until_complete(coroutine)
+                except Exception as e:
+                    print(e)
+                if result is None:
+                    loop.close()
+
+                return JsonResponse({"username": request.user.username, "room_name": info['room_name']})
+
+            else:
+                pass
+        else:
+            return JsonResponse({"data": "Invalid Payload is supplied..",
+                             "status_code": status.HTTP_400_BAD_REQUEST,
+                             "status": "Fail"})

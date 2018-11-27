@@ -14,3 +14,7 @@ class DeleteUserSerializer(serializers.Serializer):
 
 class CreateRoomSerializer(serializers.Serializer):
     title = serializers.CharField(max_length=255, required=True)
+
+
+class JoinRoomSerializer(serializers.Serializer):
+    room_name = serializers.CharField(max_length=255, required=True)
