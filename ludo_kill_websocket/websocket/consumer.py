@@ -1,10 +1,12 @@
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.generic.websocket import AsyncJsonWebsocketConsumer, WebsocketConsumer
 from .utils import ClientError, get_room_or_error, user_count
 from django.conf import settings
 import requests
 import datetime
 from .models import UserRoom
 import json
+from channels.auth import login, get_user
+from django.contrib.auth.models import User
 
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
@@ -224,18 +226,31 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = 'chat_%s' % self.room_name
-        print(self.scope["user"])
-        print("room_name, room_group_name")
-        print(self.room_name, self.room_group_name)
 
-        # Join room group
+        # Join current user to a room_group and associate a bi-direction channel for communication with other users in
+        # same room_group
         await self.channel_layer.group_add(
             self.room_group_name,
             self.channel_name
         )
-        message = {'user': self.scope["user"].username, "room_id": self.room_group_name}
+
+        print(await get_user(self.scope))
+        print("user:", self.scope['user'], self.scope['user'].is_authenticated)
+        # Trying to send JOINING message to other users in room_group
+        user = self.scope["user"]
+        message = {'user': user.username, "room_id": self.room_group_name, "message_type": "JOIN"}
+
+        # Accepts an incoming socket request from user
         await self.accept()
-        await self.channel_layer.group_send(self.room_group_name, {'type': 'chat_message', 'message': message})
+        await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
+
+
+    async def join_room(self, event):
+        message = event['message']
+        await self.send(text_data=json.dumps({
+            'message': message
+        }))
+
 
     async def disconnect(self, close_code):
         # Leave room group
@@ -243,18 +258,40 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
             self.room_group_name,
             self.channel_name
         )
+        # Trying to send JOINING message to other users in room_group
+        message = {'user': self.scope["user"].username, "room_id": self.room_group_name, "message_type": "LEAVE"}
+        await self.channel_layer.group_send(self.room_group_name, {'type': 'leave.room', 'message': message})
+
+    async def leave_room(self, event):
+        message = event['message']
+        await self.send(text_data=json.dumps({
+            'message': message
+        }))
+
 
     # Receive message from WebSocket
     async def receive_json(self, content, **kwargs):
         message = content
-        print("##### from async def receive_json", message)
-        # Send message to room group
-        await self.channel_layer.group_send(self.room_group_name, {'type': 'chat_message', 'message': message})
+        # Trying to broadcast chat message over room_group member
+        await self.channel_layer.group_send(self.room_group_name, {'type': 'chat.message', 'message': message})
 
-    # Receive message from room group
     async def chat_message(self, event):
         message = event['message']
-        # Send message to WebSocket
         await self.send(text_data=json.dumps({
             'message': message
         }))
+
+
+class WebChatConsumer(WebsocketConsumer):
+
+    def connect(self):
+        self.user = self.scope["user"]
+        print(self.user)
+        self.accept()
+
+    def receive(self, event):
+        username_str = None
+        username = self.scope["user"]
+        if username.is_authenticated:
+            username_str = username.username
+            print(type(username_str))
