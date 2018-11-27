@@ -3,7 +3,7 @@ from channels.auth import AuthMiddlewareStack
 from channels.routing import ProtocolTypeRouter, URLRouter
 from websocket import routing
 from django.urls import path
-from websocket.consumer import ChatConsumer, SimpleChatConsumer, WebChatConsumer
+from websocket.consumer import ChatConsumer, SimpleChatConsumer
 
 
 # application = ProtocolTypeRouter({
@@ -33,8 +33,7 @@ application = ProtocolTypeRouter({
         URLRouter([
             # URLRouter just takes standard Django path() or url() entries.
             path("chat/stream/", ChatConsumer),
-            path("chat/<str:room_name>/", SimpleChatConsumer),
-            path("webchat/", WebChatConsumer)
+            path("chat/<str:room_name>/<int:user_id>/", SimpleChatConsumer)
         ]),
     ),
 

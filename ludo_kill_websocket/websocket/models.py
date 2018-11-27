@@ -25,9 +25,9 @@ class Room(models.Model):
 
 class UserRoom(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    room_id = models.IntegerField(verbose_name="RoomID for associated user")
+    room_name = models.CharField(verbose_name="Room name for associated user", max_length=255, default="")
 
     def __str__(self):
-        return "User ID :{} from Room ID: {}".format(str(self.user.id), str(self.room_id))
+        return "User ID :{} from Room ID: {}".format(str(self.user.id), self.room_name)
 
 

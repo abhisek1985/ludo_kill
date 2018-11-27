@@ -14,6 +14,7 @@ async def test_websocket(payload=None):
         print("response received < {}".format(greeting))
 
 
+
 if __name__ == '__main__':
     print("# ************************************** Test Login API *******************************************")
     url = 'http://{}:{}/login_user/'.format('127.0.0.1', '8000')
