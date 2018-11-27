@@ -5,9 +5,9 @@ import requests
 import datetime
 from .models import UserRoom
 import json
-from channels.auth import login, get_user
+from channels.auth import login, database_sync_to_async
 from django.contrib.auth.models import User
-
+from rest_framework import status
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -225,24 +225,38 @@ class ChatConsumer(AsyncJsonWebsocketConsumer):
 class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
     async def connect(self):
         self.room_name = self.scope['url_route']['kwargs']['room_name']
+        self.user_id = self.scope['url_route']['kwargs']['user_id']
         self.room_group_name = 'chat_%s' % self.room_name
 
-        # Join current user to a room_group and associate a bi-direction channel for communication with other users in
-        # same room_group
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name
-        )
+        # login the new user before assign a channel with room_group
+        await login(self.scope, User.objects.get(id=int(self.user_id)))
+        # save the session (if the session backend does not access the db you can use `sync_to_async`)
+        await database_sync_to_async(self.scope["session"].save)()
 
-        print(await get_user(self.scope))
-        print("user:", self.scope['user'], self.scope['user'].is_authenticated)
-        # Trying to send JOINING message to other users in room_group
-        user = self.scope["user"]
-        message = {'user': user.username, "room_id": self.room_group_name, "message_type": "JOIN"}
+        if UserRoom.objects.filter(room_name=self.room_name).count() <= 4:
+            # Join current user to a room_group and associate a bi-direction channel for communication with other users in
+            # same room_group
+            await self.channel_layer.group_add(
+                self.room_group_name,
+                self.channel_name
+            )
+            # Trying to send JOINING message to other users in room_group
+            user = self.scope["user"]
+            message = {'username': user.username, "room_name": self.room_name, "message_type": "JOIN",
+                       "status":status.HTTP_200_OK}
 
-        # Accepts an incoming socket request from user
-        await self.accept()
-        await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
+            # Accepts an incoming socket request from user
+            await self.accept()
+            await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
+        else:
+            # Trying to send Not JOINING message to other users in room_group
+            user = self.scope["user"]
+            message = {'user': user.username, "room_id": self.room_group_name, "message_type": "JOIN",
+                       "status": status.HTTP_400_BAD_REQUEST}
+
+            # Accepts an incoming socket request from user
+            await self.close()
+            await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
 
 
     async def join_room(self, event):
@@ -282,16 +296,3 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         }))
 
 
-class WebChatConsumer(WebsocketConsumer):
-
-    def connect(self):
-        self.user = self.scope["user"]
-        print(self.user)
-        self.accept()
-
-    def receive(self, event):
-        username_str = None
-        username = self.scope["user"]
-        if username.is_authenticated:
-            username_str = username.username
-            print(type(username_str))
