@@ -17,8 +17,10 @@ from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import JSONParser
 from datetime import datetime
-import aiofiles as aiof
 from random import randrange
+import redis
+from .global_member import GlobalMember
+
 
 def find_websocket_obj(content, user_id):
     r, flag = '', False
@@ -50,36 +52,43 @@ def find_websocket_obj(content, user_id):
 #         greeting = json.loads(await websocket.recv())["message"]
 #         print("response received < {}".format(greeting))
 
+
 async def join_websocket(payload=None):
     # Trying to connect an user to a given room name
     ws_url = 'ws://{}:{}/chat/{}/{}/'.format(payload["host"], payload["port"], payload["room"], payload["user_id"])
-    async with websockets.connect(ws_url) as websocket:
-        print(websocket, type(websocket), str(websocket), id(websocket))
-        response = json.loads(await websocket.recv())#["message"]
-        if response.get("status") == status.HTTP_200_OK:
-            UserRoom.objects.create(user=User.objects.get(username=response.get("username")),
-                                    room_name=response.get("room_name"))
-            print("response received < {}".format(response))
-            async with aiof.open("mesh.txt", "a") as out:
-                await out.write("{} {}\n".format(payload["user_id"], websocket))
+    websocket = await websockets.connect(ws_url)
+    print(websocket, type(websocket), str(websocket), id(websocket))
+    response = json.loads(await websocket.recv())#["message"]
+    if response.get("status") == status.HTTP_200_OK:
+        UserRoom.objects.get_or_create(user=User.objects.get(username=response.get("username")),
+                                room_name=response.get("room_name"))
+        print("response received < {}".format(response))
 
-        return response
+        GlobalMember.uid_ws_dict[payload["user_id"]] = websocket
+        print('join_websocket:', GlobalMember.uid_ws_dict)
+        
+    return response
 
 
 async def chat_websocket(user_id=None):
-    async with aiof.open('mesh.txt') as f:
-        content = await f.readlines()
-        web_sock_obj = find_websocket_obj(content, user_id)
-        if web_sock_obj is not None:
-            payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
-            await web_sock_obj.send(data=json.dumps(payload))
-            print(">payload send :: {}".format(payload))
-            response = json.loads(await web_sock_obj.recv())["message"]
-            print("response received < {}".format(response))
-            return response
-        else:
-            return None
+    print('chat_websocket:', GlobalMember.uid_ws_dict)
+    ws = GlobalMember.uid_ws_dict.get(str(user_id), None)
+    print('chat_websocket ws',GlobalMember.uid_ws_dict)
+    print(str(ws))
+    if ws is not None:
+        payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
+        await ws.send(data=json.dumps(payload))
+        print(">payload send :: {}".format(payload))
+        response = json.loads(await ws.recv())["message"]
+        print("response received < {}".format(response))
+        return response
+    else:
+        return None
 
+async def chat_recv_ws(ws=None):
+    response = json.loads(await ws.recv())["message"]
+    return response
+        
 
 def is_json(myjson):
     try:
@@ -295,19 +304,20 @@ class ChatRoom(APIView):
         serializer = ChatRoomSerializer(data=request.data)
         if serializer.is_valid():
             info = serializer.validated_data
+            print('ChatRoom user_id:',info["user_id"])
             coroutine = chat_websocket(user_id=info["user_id"])
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            loop1 = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop1)
             result = None
             try:
-                result = loop.run_until_complete(coroutine)
+                result = loop1.run_until_complete(coroutine)
             except Exception as e:
                 print(e)
             if result is None:
-                loop.close()
+                loop1.close()
                 return JsonResponse(dict())
             else:
-                loop.close()
+                loop1.close()
                 return JsonResponse(result)
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",

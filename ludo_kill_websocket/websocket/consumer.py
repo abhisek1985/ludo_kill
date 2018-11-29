@@ -286,6 +286,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
     # Receive message from WebSocket
     async def receive_json(self, content, **kwargs):
         message = content
+        print('receive_json',content)
         # Trying to broadcast chat message over room_group member
         await self.channel_layer.group_send(self.room_group_name, {'type': 'chat.message', 'message': message})
 
