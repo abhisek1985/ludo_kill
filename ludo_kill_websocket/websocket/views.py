@@ -3,7 +3,8 @@ from rest_framework import status
 from rest_framework.parsers import JSONParser
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from .serializers import UserSerializer, DeleteUserSerializer, CreateRoomSerializer, JoinRoomSerializer
+from .serializers import UserSerializer, DeleteUserSerializer, CreateRoomSerializer, JoinRoomSerializer, \
+    ChatRoomSerializer
 import sys
 from django.contrib.auth import authenticate, login, logout
 from .models import Room, UserRoom
@@ -12,10 +13,30 @@ import asyncio
 import json
 from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
-from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import JSONParser
 from datetime import datetime
+import aiofiles as aiof
+from random import randrange
+
+def find_websocket_obj(content, user_id):
+    r, flag = '', False
+    for i in range(len(content)):
+        content[i] = content[i].strip('\n')
+        if content[i].find(str(user_id)):
+            r = content[i]
+            flag = True
+            break
+    if flag:
+        websocket_str = r.split(' ', maxsplit=1)[1]
+        websocket_obj = getattr(sys.modules[__name__], websocket_str)
+        print(websocket_obj)
+        return websocket_obj
+    else:
+        return None
+
+
 
 # async def test_websocket(payload=None):
 #     # Trying to connect an user to a given room name
@@ -29,19 +50,36 @@ from datetime import datetime
 #         greeting = json.loads(await websocket.recv())["message"]
 #         print("response received < {}".format(greeting))
 
-
-async def test_websocket(payload=None):
+async def join_websocket(payload=None):
     # Trying to connect an user to a given room name
     ws_url = 'ws://{}:{}/chat/{}/{}/'.format(payload["host"], payload["port"], payload["room"], payload["user_id"])
     async with websockets.connect(ws_url) as websocket:
-        print(websocket, type(websocket))
-        response = json.loads(await websocket.recv())["message"]
+        print(websocket, type(websocket), str(websocket), id(websocket))
+        response = json.loads(await websocket.recv())#["message"]
         if response.get("status") == status.HTTP_200_OK:
             UserRoom.objects.create(user=User.objects.get(username=response.get("username")),
                                     room_name=response.get("room_name"))
+            print("response received < {}".format(response))
+            async with aiof.open("mesh.txt", "a") as out:
+                await out.write("{} {}\n".format(payload["user_id"], websocket))
 
-            #print("response received < {}".format(response))
         return response
+
+
+async def chat_websocket(user_id=None):
+    async with aiof.open('mesh.txt') as f:
+        content = await f.readlines()
+        web_sock_obj = find_websocket_obj(content, user_id)
+        if web_sock_obj is not None:
+            payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
+            await web_sock_obj.send(data=json.dumps(payload))
+            print(">payload send :: {}".format(payload))
+            response = json.loads(await web_sock_obj.recv())["message"]
+            print("response received < {}".format(response))
+            return response
+        else:
+            return None
+
 
 def is_json(myjson):
     try:
@@ -204,8 +242,7 @@ class JoinRoom(APIView):
             if request.user.is_authenticated:
                 socket_payload = {"command": "join", "room": info['room_name'], "user_id": str(request.user.id),
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
-                print(socket_payload)
-                coroutine = test_websocket(payload=socket_payload)
+                coroutine = join_websocket(payload=socket_payload)
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 result = None
@@ -226,7 +263,7 @@ class JoinRoom(APIView):
                 user_obj = User.objects.create_user(username='guest_user_{}'.format(datetime.now().time()), password='pass123')
                 socket_payload = {"command": "join", "room": info['room_name'], "user_id": str(user_obj.id),
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
-                coroutine = test_websocket(payload=socket_payload)
+                coroutine = join_websocket(payload=socket_payload)
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 result = None
@@ -246,3 +283,33 @@ class JoinRoom(APIView):
             return JsonResponse({"data": "Invalid Payload is supplied..",
                              "status_code": status.HTTP_400_BAD_REQUEST,
                              "status": "Fail"})
+
+
+
+class ChatRoom(APIView):
+    authentication_classes = (TokenAuthentication,)
+    parser_classes = (JSONParser,)
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        serializer = ChatRoomSerializer(data=request.data)
+        if serializer.is_valid():
+            info = serializer.validated_data
+            coroutine = chat_websocket(user_id=info["user_id"])
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result = None
+            try:
+                result = loop.run_until_complete(coroutine)
+            except Exception as e:
+                print(e)
+            if result is None:
+                loop.close()
+                return JsonResponse(dict())
+            else:
+                loop.close()
+                return JsonResponse(result)
+        else:
+            return JsonResponse({"data": "Invalid Payload is supplied..",
+                                 "status_code": status.HTTP_400_BAD_REQUEST,
+                                 "status": "Fail"})
