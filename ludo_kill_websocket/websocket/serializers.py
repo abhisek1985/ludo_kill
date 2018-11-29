@@ -18,3 +18,6 @@ class CreateRoomSerializer(serializers.Serializer):
 
 class JoinRoomSerializer(serializers.Serializer):
     room_name = serializers.CharField(max_length=255, required=True)
+
+class ChatRoomSerializer(serializers.Serializer):
+    user_id = serializers.IntegerField()

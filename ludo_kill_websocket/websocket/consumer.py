@@ -233,7 +233,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         # save the session (if the session backend does not access the db you can use `sync_to_async`)
         await database_sync_to_async(self.scope["session"].save)()
 
-        if UserRoom.objects.filter(room_name=self.room_name).count() <= 4:
+        if UserRoom.objects.filter(room_name=self.room_name).count() != 4:
             # Join current user to a room_group and associate a bi-direction channel for communication with other users in
             # same room_group
             await self.channel_layer.group_add(
@@ -249,21 +249,21 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
             await self.accept()
             await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
         else:
-            # Trying to send Not JOINING message to other users in room_group
+            # Accept incoming socket request from user
+            await self.accept()
+            # Don't assign any channel to this user and add him in Room
+            # Trying to send Not JOINING message as response
             user = self.scope["user"]
-            message = {'user': user.username, "room_id": self.room_group_name, "message_type": "JOIN",
+            message = {'user': user.username, "room_id": self.room_group_name, "message_type": "JOIN Failed Room Filled",
                        "status": status.HTTP_400_BAD_REQUEST}
-
-            # Accepts an incoming socket request from user
-            await self.close()
-            await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
+            await self.send(text_data=json.dumps(message))
+            #await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
 
 
     async def join_room(self, event):
         message = event['message']
-        await self.send(text_data=json.dumps({
-            'message': message
-        }))
+        #await self.send(text_data=json.dumps({'message': message}))
+        await self.send(text_data=json.dumps(message))
 
 
     async def disconnect(self, close_code):
@@ -274,13 +274,13 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         )
         # Trying to send JOINING message to other users in room_group
         message = {'user': self.scope["user"].username, "room_id": self.room_group_name, "message_type": "LEAVE"}
-        await self.channel_layer.group_send(self.room_group_name, {'type': 'leave.room', 'message': message})
+        await self.send(text_data=json.dumps(message))
+        #await self.channel_layer.group_send(self.room_group_name, {'type': 'leave.room', 'message': message})
 
     async def leave_room(self, event):
         message = event['message']
-        await self.send(text_data=json.dumps({
-            'message': message
-        }))
+        #await self.send(text_data=json.dumps({'message': message}))
+        await self.send(text_data=json.dumps(message))
 
 
     # Receive message from WebSocket
@@ -291,8 +291,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
 
     async def chat_message(self, event):
         message = event['message']
-        await self.send(text_data=json.dumps({
-            'message': message
-        }))
+        #await self.send(text_data=json.dumps({'message': message}))
+        await self.send(text_data=json.dumps(message))
 
 
