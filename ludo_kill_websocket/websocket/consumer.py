@@ -267,6 +267,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
 
 
     async def disconnect(self, close_code):
+        print('close_code:', close_code)
         # Leave room group
         await self.channel_layer.group_discard(
             self.room_group_name,
@@ -287,6 +288,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
     async def receive_json(self, content, **kwargs):
         message = content
         print('receive_json',content)
+        await self.send(text_data=json.dumps(message))
         # Trying to broadcast chat message over room_group member
         await self.channel_layer.group_send(self.room_group_name, {'type': 'chat.message', 'message': message})
 

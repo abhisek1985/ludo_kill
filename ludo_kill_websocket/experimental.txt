@@ -1,0 +1,41 @@
+
+class KeepMeAlive(Thread):
+    def __init__(self, ws, message, loop, host, port): 
+        Thread.__init__(self) 
+        self.ws = ws
+        self.message = message
+        self.loop = loop
+        self.host = host
+        self.port = port
+
+    def run(self): 
+        while True:
+            try:
+                time.sleep(15)
+                async def chat_recv_ws():
+                    await self.ws.send(json.dumps(self.message))
+                    print(await self.ws.recv())
+
+                coroutine = chat_recv_ws()
+                asyncio.set_event_loop(self.loop)
+                self.loop.run_until_complete(coroutine)
+            except Exception as e:
+                print(e)
+                async def join_websocket(payload=None, host=None, port=None):
+                    # Trying to connect an user to a given room name
+                    ws_url = 'ws://{}:{}/chat/{}/{}/'.format(host, port, payload["room"], payload["user_id"])
+                    websocket = await websockets.connect(ws_url)
+                    response = json.loads(await websocket.recv())#["message"]
+                    if response.get("status") == status.HTTP_200_OK:
+                        UserRoom.objects.get_or_create(user=User.objects.get(username=response.get("username")),
+                                                room_name=response.get("room_name"))
+                        print("response received < {}".format(response))
+
+                        self.ws[payload["user_id"]] = websocket
+                        
+                    return response
+                coroutine = join_websocket(payload=self.message, host=self.host, port=self.port)
+                loop = asyncio.new_event_loop()
+                self.loop[str(self.message["user_id"])] = loop
+                asyncio.set_event_loop(self.loop[self.message["user_id"]])
+                self.loop[self.message["user_id"]].run_until_complete(coroutine)

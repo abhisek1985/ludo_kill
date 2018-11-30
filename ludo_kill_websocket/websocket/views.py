@@ -19,7 +19,7 @@ from rest_framework.parsers import JSONParser
 from datetime import datetime
 from random import randrange
 import redis
-from .global_member import GlobalMember
+from .global_member import GlobalMember, KeepMeAlive
 
 
 def find_websocket_obj(content, user_id):
@@ -66,6 +66,8 @@ async def join_websocket(payload=None):
 
         GlobalMember.uid_ws_dict[payload["user_id"]] = websocket
         print('join_websocket:', GlobalMember.uid_ws_dict)
+        kma = KeepMeAlive(websocket, response, GlobalMember.uid_loop_dict[str(payload["user_id"])])
+        kma.start()
         
     return response
 
@@ -79,7 +81,9 @@ async def chat_websocket(user_id=None):
         payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
         await ws.send(data=json.dumps(payload))
         print(">payload send :: {}".format(payload))
-        response = json.loads(await ws.recv())["message"]
+        response = json.loads(await ws.recv())
+        while response.get('message_type',None):
+            response = json.loads(await ws.recv())
         print("response received < {}".format(response))
         return response
     else:
@@ -253,17 +257,20 @@ class JoinRoom(APIView):
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
                 coroutine = join_websocket(payload=socket_payload)
                 loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                print(loop)
+                GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
+                print('JoinRoom',GlobalMember.uid_loop_dict)
+                asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
                 result = None
                 try:
-                    result = loop.run_until_complete(coroutine)
+                    result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
                 except Exception as e:
                     print(e)
                 if result is None:
-                    loop.close()
+                    #loop.close()
                     return JsonResponse(dict())
                 else:
-                    loop.close()
+                    #loop.close()
                     return JsonResponse(result)
 
                 #return JsonResponse({"username": request.user.username, "room_name": info['room_name']})
@@ -274,17 +281,19 @@ class JoinRoom(APIView):
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
                 coroutine = join_websocket(payload=socket_payload)
                 loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+                GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
+                print('JoinRoom else',GlobalMember.uid_loop_dict)
+                asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
                 result = None
                 try:
-                    result = loop.run_until_complete(coroutine)
+                    result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
                 except Exception as e:
                     print(e)
                 if result is None:
-                    loop.close()
+                    #loop.close()
                     return JsonResponse(dict())
                 else:
-                    loop.close()
+                    #loop.close()
                     return JsonResponse(result)
 
                 #return JsonResponse({"username": user_obj.username, "room_name": info['room_name']})
@@ -306,18 +315,20 @@ class ChatRoom(APIView):
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
             coroutine = chat_websocket(user_id=info["user_id"])
-            loop1 = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop1)
+            #loop1 = asyncio.new_event_loop()
+            print('chatroom',GlobalMember.uid_loop_dict)
+            asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
             result = None
             try:
-                result = loop1.run_until_complete(coroutine)
+                result = GlobalMember.uid_loop_dict[str(info["user_id"])].run_until_complete(coroutine)
+                print('chatroom result:',result)
             except Exception as e:
                 print(e)
             if result is None:
-                loop1.close()
+                #loop.close()
                 return JsonResponse(dict())
             else:
-                loop1.close()
+                #loop.close()
                 return JsonResponse(result)
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",
