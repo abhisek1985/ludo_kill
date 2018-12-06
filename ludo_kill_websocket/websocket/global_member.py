@@ -30,4 +30,5 @@ class KeepMeAlive(Thread):
                 self.loop.run_until_complete(coroutine)
             except Exception as e:
                 print(e)
+                self.loop.close()
                 break

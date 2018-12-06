@@ -256,23 +256,28 @@ class JoinRoom(APIView):
             if request.user.is_authenticated:
                 socket_payload = {"command": "join", "room": info['room_name'], "user_id": str(request.user.id),
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
-                coroutine = join_websocket(payload=socket_payload)
-                loop = asyncio.new_event_loop()
-                print(loop)
-                GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
-                print('JoinRoom',GlobalMember.uid_loop_dict)
-                asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
-                result = None
-                try:
-                    result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
-                except Exception as e:
-                    print(e)
-                if result is None:
-                    #loop.close()
-                    return JsonResponse(dict())
+                loop = GlobalMember.uid_loop_dict.get(str(socket_payload["user_id"]), None)
+                if not loop or (loop and loop.is_closed()):
+
+                    coroutine = join_websocket(payload=socket_payload)
+                    loop = asyncio.new_event_loop()
+                    print(loop)
+                    GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
+                    print('JoinRoom',GlobalMember.uid_loop_dict)
+                    asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
+                    result = None
+                    try:
+                        result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
+                    except Exception as e:
+                        print(e)
+                    if result is None:
+                        #loop.close()
+                        return JsonResponse(dict())
+                    else:
+                        #loop.close()
+                        return JsonResponse(result)
                 else:
-                    #loop.close()
-                    return JsonResponse(result)
+                    return JsonResponse({"message_type": "JOIN", "status": "{} is already connected".format(request.user.username)})
 
                 #return JsonResponse({"username": request.user.username, "room_name": info['room_name']})
 
@@ -315,22 +320,27 @@ class ChatRoom(APIView):
         if serializer.is_valid():
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
-            coroutine = chat_websocket(user_id=info["user_id"])
-            #loop1 = asyncio.new_event_loop()
-            print('chatroom',GlobalMember.uid_loop_dict)
-            asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
-            result = None
-            try:
-                result = GlobalMember.uid_loop_dict[str(info["user_id"])].run_until_complete(coroutine)
-                print('chatroom result:',result)
-            except Exception as e:
-                print(e)
-            if result is None:
-                #loop.close()
-                return JsonResponse(dict())
+            if GlobalMember.uid_loop_dict.get(str(info["user_id"]), None):
+                coroutine = chat_websocket(user_id=info["user_id"])
+                #loop1 = asyncio.new_event_loop()
+                print('chatroom',GlobalMember.uid_loop_dict)
+                asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
+                result = None
+                try:
+                    result = GlobalMember.uid_loop_dict[str(info["user_id"])].run_until_complete(coroutine)
+                    print('chatroom result:',result)
+                except Exception as e:
+                    print(e)
+                if result is None:
+                    #loop.close()
+                    return JsonResponse(dict())
+                else:
+                    #loop.close()
+                    return JsonResponse(result)
             else:
-                #loop.close()
-                return JsonResponse(result)
+                return JsonResponse({"data": "User with user id {} is not connected.".format(request.data['user_id']),
+                                     "status_code": status.HTTP_400_BAD_REQUEST,
+                                     "status": "Fail"})
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",
                                  "status_code": status.HTTP_400_BAD_REQUEST,
