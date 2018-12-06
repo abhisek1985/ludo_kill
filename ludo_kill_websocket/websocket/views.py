@@ -357,15 +357,22 @@ class LeaveRoom(APIView):
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
             loop = GlobalMember.uid_loop_dict.get(str(info["user_id"]), None)
-            coroutine = close_websocket(user_id=info["user_id"])
-            asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
-            loop.run_until_complete(coroutine)
-            loop.close()
-            return JsonResponse({
-                "data": "User with user_id {} is disconnected.".format(str(info["user_id"])),
-                "status_code": status.HTTP_200_OK,
-                "status": "Success"
-            })
+            if loop and not loop.is_closed():
+                coroutine = close_websocket(user_id=info["user_id"])
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(coroutine)
+                loop.close()
+                return JsonResponse({
+                    "data": "User with user_id {} is disconnected.".format(str(info["user_id"])),
+                    "status_code": status.HTTP_200_OK,
+                    "status": "Success"
+                })
+            else:
+                return JsonResponse({
+                    "data": "User with user_id {} is not connected.".format(str(info["user_id"])),
+                    "status_code": status.HTTP_200_OK,
+                    "status": "Success"
+                })
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",
                                  "status_code": status.HTTP_400_BAD_REQUEST,
