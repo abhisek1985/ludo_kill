@@ -19,10 +19,15 @@ class KeepMeAlive(Thread):
     def run(self): 
         while True:
             time.sleep(15)
-            async def chat_recv_ws():
-                await self.ws.send(json.dumps(self.message))
-                print(await self.ws.recv())
+            try:
+                async def ping_pong_cor():
+                    self.message['message_type'] = 'PING'
+                    await self.ws.send(json.dumps(self.message))
+                    print(await self.ws.recv())
 
-            coroutine = chat_recv_ws()
-            asyncio.set_event_loop(self.loop)
-            self.loop.run_until_complete(coroutine)
+                coroutine = ping_pong_cor()
+                asyncio.set_event_loop(self.loop)
+                self.loop.run_until_complete(coroutine)
+            except Exception as e:
+                print(e)
+                break

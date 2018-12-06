@@ -5,7 +5,7 @@ import requests
 import datetime
 from .models import UserRoom
 import json
-from channels.auth import login, database_sync_to_async
+from channels.auth import login, database_sync_to_async, logout
 from django.contrib.auth.models import User
 from rest_framework import status
 
@@ -273,7 +273,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
             self.room_group_name,
             self.channel_name
         )
-        # Trying to send JOINING message to other users in room_group
+        # Trying to send LEAVE message to other users in room_group
         message = {'user': self.scope["user"].username, "room_id": self.room_group_name, "message_type": "LEAVE"}
         await self.send(text_data=json.dumps(message))
         #await self.channel_layer.group_send(self.room_group_name, {'type': 'leave.room', 'message': message})
@@ -287,8 +287,13 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
     # Receive message from WebSocket
     async def receive_json(self, content, **kwargs):
         message = content
-        print('receive_json',content)
-        await self.send(text_data=json.dumps(message))
+        print('receive_json:',content)
+        if message.get('message_type', None) == 'PING':
+            message['message_type'] = 'PONG'
+            await self.send(text_data=json.dumps(message))
+        elif message.get('message_type', None) == 'LEAVE':
+            await logout(self.scope)
+            await self.close()
         # Trying to broadcast chat message over room_group member
         await self.channel_layer.group_send(self.room_group_name, {'type': 'chat.message', 'message': message})
 

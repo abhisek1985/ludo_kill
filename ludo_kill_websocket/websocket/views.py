@@ -89,10 +89,11 @@ async def chat_websocket(user_id=None):
     else:
         return None
 
-async def chat_recv_ws(ws=None):
-    response = json.loads(await ws.recv())["message"]
-    return response
-        
+
+async def close_websocket(user_id=None):
+    ws = GlobalMember.uid_ws_dict.get(str(user_id), None)
+    if ws is not None:
+        await ws.send(data=json.dumps({"message_type": "LEAVE", "user_id": user_id}))
 
 def is_json(myjson):
     try:
@@ -330,6 +331,31 @@ class ChatRoom(APIView):
             else:
                 #loop.close()
                 return JsonResponse(result)
+        else:
+            return JsonResponse({"data": "Invalid Payload is supplied..",
+                                 "status_code": status.HTTP_400_BAD_REQUEST,
+                                 "status": "Fail"})
+
+class LeaveRoom(APIView):
+    authentication_classes = (TokenAuthentication,)
+    parser_classes = (JSONParser,)
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        serializer = ChatRoomSerializer(data=request.data)
+        if serializer.is_valid():
+            info = serializer.validated_data
+            print('ChatRoom user_id:',info["user_id"])
+            loop = GlobalMember.uid_loop_dict.get(str(info["user_id"]), None)
+            coroutine = close_websocket(user_id=info["user_id"])
+            asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
+            loop.run_until_complete(coroutine)
+            loop.close()
+            return JsonResponse({
+                "data": "User with user_id {} is disconnected.".format(str(info["user_id"])),
+                "status_code": status.HTTP_200_OK,
+                "status": "Success"
+            })
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",
                                  "status_code": status.HTTP_400_BAD_REQUEST,
