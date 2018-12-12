@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from .models import PlayerBoardDetail, LiveGameRoom
 
 
 class UserSerializer(serializers.Serializer):
@@ -19,5 +20,21 @@ class CreateRoomSerializer(serializers.Serializer):
 class JoinRoomSerializer(serializers.Serializer):
     room_name = serializers.CharField(max_length=255, required=True)
 
+
 class ChatRoomSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
+    room_name = serializers.CharField(max_length=255, required=True)
+    message_type = serializers.CharField(max_length=255, required=True)  # massage_type: CURRENT_STATE, UPDATE_BOARD
+    token_data = serializers.CharField(required=False)
+
+
+class PlayerBoardDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlayerBoardDetail
+        fields = ('user', 'player_id', 'token_data')
+
+class LiveGameRoomSerializer(serializers.ModelSerializer):
+    playerlist_details = PlayerBoardDetailSerializer(many=True)
+    class Meta:
+        model = LiveGameRoom
+        fields = ('playerlist_details',)

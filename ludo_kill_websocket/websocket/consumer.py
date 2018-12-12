@@ -1,13 +1,17 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer, WebsocketConsumer
+
+from .global_member import GlobalMember
+from .serializers import PlayerBoardDetailSerializer, LiveGameRoomSerializer
 from .utils import ClientError, get_room_or_error, user_count
 from django.conf import settings
 import requests
 import datetime
-from .models import UserRoom
+from .models import UserRoom, PlayerBoardDetail, LiveGameRoom
 import json
-from channels.auth import login, database_sync_to_async, logout
+from channels.auth import login, logout
 from django.contrib.auth.models import User
 from rest_framework import status
+from channels.db import database_sync_to_async
 
 class ChatConsumer(AsyncJsonWebsocketConsumer):
     """
@@ -242,11 +246,12 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
             )
             # Trying to send JOINING message to other users in room_group
             user = self.scope["user"]
-            message = {'username': user.username, "room_name": self.room_name, "message_type": "JOIN",
+            message = {'username': user.username, "user_id": user.id, "room_name": self.room_name, "message_type": "JOIN",
                        "status":status.HTTP_200_OK}
 
             # Accepts an incoming socket request from user
             await self.accept()
+            # await self.join_operation(message)
             await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
         else:
             # Accept incoming socket request from user
@@ -291,6 +296,12 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         if message.get('message_type', None) == 'PING':
             message['message_type'] = 'PONG'
             await self.send(text_data=json.dumps(message))
+        elif message.get('message_type', None) == 'CURRENT_STATE':
+            # result = await self.get_current_state(message)
+            await self.send(text_data=json.dumps(message))
+        elif message.get('message_type', None) == 'UPDATE_BOARD':
+            # result = await self.update_board(message)
+            await self.send(text_data=json.dumps(message))
         elif message.get('message_type', None) == 'LEAVE':
             await logout(self.scope)
             await self.close()
@@ -302,4 +313,29 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         #await self.send(text_data=json.dumps({'message': message}))
         await self.send(text_data=json.dumps(message))
 
+    # @database_sync_to_async
+    # def join_operation(self, message=None):
+    #     print('join_operation_message', message)
+    #     live_game_room, created = LiveGameRoom.objects.get_or_create(live_room_name=message['room_name'])
+    #     player_no = str(live_game_room.playerlist_details.all().count())
+    #     if not live_game_room.playerlist_details.filter(user_id=int(message['user_id'])):
+    #         player_board_details = PlayerBoardDetail.objects.create(user=User.objects.get(pk=int(message['user_id'])),
+    #                                                                 player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
+    #         live_game_room.playerlist_details.add(player_board_details)
+    #     else:
+    #         player_board_details = live_game_room.playerlist_details.get(user_id=int(message['user_id']))
+    #     player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
+    #     print(player_board_details_serializer.data)
 
+
+    # @database_sync_to_async
+    # def get_current_state(self, message=None):
+    #     print('get_current_state', message)
+    #     live_game_room = LiveGameRoom.objects.get(live_room_name=message['room_name'])
+    #     live_game_room_serializer = LiveGameRoomSerializer(live_game_room)
+    #     return json.dumps(live_game_room_serializer.data)
+
+    # @database_sync_to_async
+    # def update_board(self, message=None):
+    #     print(message)
+    #     return json.dumps(message)

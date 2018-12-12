@@ -4,10 +4,10 @@ from rest_framework.parsers import JSONParser
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .serializers import UserSerializer, DeleteUserSerializer, CreateRoomSerializer, JoinRoomSerializer, \
-    ChatRoomSerializer
+    ChatRoomSerializer, PlayerBoardDetailSerializer, LiveGameRoomSerializer
 import sys
 from django.contrib.auth import authenticate, login, logout
-from .models import Room, UserRoom
+from .models import Room, UserRoom, LiveGameRoom, PlayerBoardDetail
 import websockets
 import asyncio
 import json
@@ -15,11 +15,12 @@ from rest_framework.views import APIView
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import AllowAny
-from rest_framework.parsers import JSONParser
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from datetime import datetime
 from random import randrange
-import redis
+from rest_framework.decorators import parser_classes, api_view
 from .global_member import GlobalMember, KeepMeAlive
+from django.core import serializers
 
 
 def find_websocket_obj(content, user_id):
@@ -56,8 +57,8 @@ def find_websocket_obj(content, user_id):
 async def join_websocket(payload=None):
     # Trying to connect an user to a given room name
     ws_url = 'ws://{}:{}/chat/{}/{}/'.format(payload["host"], payload["port"], payload["room"], payload["user_id"])
+    print(ws_url)
     websocket = await websockets.connect(ws_url)
-    print(websocket, type(websocket), str(websocket), id(websocket))
     response = json.loads(await websocket.recv())#["message"]
     if response.get("status") == status.HTTP_200_OK:
         UserRoom.objects.get_or_create(user=User.objects.get(username=response.get("username")),
@@ -72,18 +73,90 @@ async def join_websocket(payload=None):
     return response
 
 
-async def chat_websocket(user_id=None):
+async def chat_websocket(payload=None):
     print('chat_websocket:', GlobalMember.uid_ws_dict)
-    ws = GlobalMember.uid_ws_dict.get(str(user_id), None)
+    ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
     print('chat_websocket ws',GlobalMember.uid_ws_dict)
     print(str(ws))
     if ws is not None:
-        payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
+        # payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
         await ws.send(data=json.dumps(payload))
-        print(">payload send :: {}".format(payload))
+        print(">payload send :: {}".format(json.dumps(payload)))
         response = json.loads(await ws.recv())
-        while response.get('message_type',None):
+        # message_type = None
+        # if response.get('message_type',None) == 'CURRENT_STATE' or response.get('message_type',None) == 'UPDATE_BOARD':
+        #     message_type = response.get('message_type',None)
+        #     if not message_type:
+        #         await ws.send(json.dumps({"message_type": "PING"}))
+        # print('message_type_out:', message_type)
+        # while not message_type:
+        #     response = json.loads(await ws.recv())
+        #     print('chat_websocket_while:', response)
+        #     if response.get('message_type', None) == 'CURRENT_STATE' or response.get('message_type',
+        #                                                                              None) == 'UPDATE_BOARD':
+        #         message_type = response.get('message_type', None)
+        #         if not message_type:
+        #             await ws.send(json.dumps({"message_type": "PING"}))
+        #
+        #     print('message_type_while:', message_type)
+        print("response received < {}".format(response))
+        return response
+    else:
+        return None
+
+
+async def current_state_coro(payload=None):
+    print('chat_websocket:', GlobalMember.uid_ws_dict)
+    ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
+    print('chat_websocket ws', GlobalMember.uid_ws_dict)
+    print(str(ws))
+    if ws is not None:
+        # payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
+        await ws.send(data=json.dumps(payload))
+        print(">payload send :: {}".format(json.dumps(payload)))
+        response = json.loads(await ws.recv())
+        message_type = None
+        if response.get('message_type', None) == 'UPDATE_BOARD':
+            message_type = response.get('message_type', None)
+        else:
+            await ws.send(json.dumps({"message_type": "PING"}))
+        print('message_type_out:', message_type)
+        while not message_type:
             response = json.loads(await ws.recv())
+            print('chat_websocket_while:', response)
+            if response.get('message_type', None) == 'UPDATE_BOARD':
+                message_type = response.get('message_type', None)
+            else:
+                await ws.send(json.dumps({"message_type": "PING"}))
+
+            print('message_type_while:', message_type)
+        print("response received < {}".format(response))
+        return response
+    else:
+        return None
+
+
+async def update_board_coro(payload=None):
+    print('chat_websocket:', GlobalMember.uid_ws_dict)
+    ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
+    print('chat_websocket ws', GlobalMember.uid_ws_dict)
+    print(str(ws))
+    if ws is not None:
+        # payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
+        await ws.send(data=json.dumps(payload))
+        print(">payload send :: {}".format(json.dumps(payload)))
+        response = json.loads(await ws.recv())
+        message_type = None
+        if response.get('message_type', None) == 'CURRENT_STATE':
+            message_type = response.get('message_type', None)
+        print('message_type_out:', message_type)
+        while not message_type:
+            response = json.loads(await ws.recv())
+            print('chat_websocket_while:', response)
+            if response.get('message_type', None) == 'CURRENT_STATE':
+                message_type = response.get('message_type', None)
+
+            print('message_type_while:', message_type)
         print("response received < {}".format(response))
         return response
     else:
@@ -109,12 +182,8 @@ def str_to_class(str):
 
 @csrf_exempt
 def create_user(request):
-    if (request.method == 'POST' or request.method == 'OPTIONS') and \
-            request.content_type == 'application/json' and \
-            (not request.body.decode('utf-8') or is_json(request.body.decode('utf-8'))):
-        data = {}
-        if request.body.decode('utf-8'):
-            data = JSONParser().parse(request)
+    if request.method == 'POST' or request.method == 'OPTIONS':
+        data = request.POST
         serializer = UserSerializer(data=data)
 
         if serializer.is_valid():
@@ -150,12 +219,8 @@ def create_user(request):
 
 @csrf_exempt
 def delete_user(request):
-    if (request.method == 'POST' or request.method == 'OPTIONS') and \
-            request.content_type == 'application/json' and \
-            (not request.body.decode('utf-8') or is_json(request.body.decode('utf-8'))):
-        data = {}
-        if request.body.decode('utf-8'):
-            data = JSONParser().parse(request)
+    if request.method == 'POST' or request.method == 'OPTIONS':
+        data = request.POST
         serializer = DeleteUserSerializer(data=data)
         if serializer.is_valid():
             info = serializer.validated_data
@@ -180,18 +245,15 @@ def delete_user(request):
 
 @csrf_exempt
 def login_user(request):
-    if (request.method == 'POST' or request.method == 'OPTIONS') and \
-            request.content_type == 'application/json' and \
-            (not request.body.decode('utf-8') or is_json(request.body.decode('utf-8'))):
-        data = {}
-        if request.body.decode('utf-8'):
-            data = JSONParser().parse(request)
+    if request.method == 'POST' or request.method == 'OPTIONS':
+        data = request.POST
         serializer = UserSerializer(data=data)
         if serializer.is_valid():
             info = serializer.validated_data
             username = info['username']
             password = info['password']
             user = authenticate(request, username=username, password=password)
+            print('user:', user)
             if user is not None:
                 token_key, token = Token.objects.get_or_create(user=user)
                 login(request, user)
@@ -199,7 +261,7 @@ def login_user(request):
                                      "user_type": user.is_authenticated, "token": token_key.key,
                                      "status": "Success"})
             else:
-                return JsonResponse({"status_code": status.HTTP_400_BAD_REQUEST, "user_type": user.is_authenticated,
+                return JsonResponse({"status_code": status.HTTP_400_BAD_REQUEST, "data": "Invalid username or password.",
                                      "status": "Fail"})
         else:
             return JsonResponse({"data": "Invalid Payload to authenticate user..",
@@ -218,12 +280,9 @@ def logout_user(request):
 
 @csrf_exempt
 def create_room(request):
-    if (request.method == 'POST' or request.method == 'OPTIONS') and \
-        request.content_type == 'application/json' and (not request.body.decode('utf-8') or
-                                                        is_json(request.body.decode('utf-8'))):
-        data = {}
-        if request.body.decode('utf-8'):
-            data = JSONParser().parse(request)
+    if request.method == 'POST' or request.method == 'OPTIONS':
+
+        data = request.POST
         serializer = CreateRoomSerializer(data=data)
         if serializer.is_valid():
             info = serializer.validated_data
@@ -246,40 +305,50 @@ def create_room(request):
 # def join_room(request, room_name=None):
 class JoinRoom(APIView):
     authentication_classes = (TokenAuthentication,)
-    parser_classes = (JSONParser,)
+    parser_classes = (FormParser,)
     permission_classes = (AllowAny,)
 
     def post(self, request, format=None):
-        serializer = JoinRoomSerializer(data=request.data)
+        serializer = JoinRoomSerializer(data=request.POST)
         if serializer.is_valid():
             info = serializer.validated_data
             if request.user.is_authenticated:
                 socket_payload = {"command": "join", "room": info['room_name'], "user_id": str(request.user.id),
                                   "host": request.get_host().split(':')[0], "port": request.get_host().split(':')[1]}
-                loop = GlobalMember.uid_loop_dict.get(str(socket_payload["user_id"]), None)
+                user_id = str(socket_payload["user_id"])
+                loop = GlobalMember.uid_loop_dict.get(user_id, None)
                 if not loop or (loop and loop.is_closed()):
-
                     coroutine = join_websocket(payload=socket_payload)
                     loop = asyncio.new_event_loop()
                     print(loop)
-                    GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
+                    GlobalMember.uid_loop_dict[user_id] = loop
                     print('JoinRoom',GlobalMember.uid_loop_dict)
-                    asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
+                    asyncio.set_event_loop(loop)
                     result = None
                     try:
-                        result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
+                        result = loop.run_until_complete(coroutine)
                     except Exception as e:
                         print(e)
                     if result is None:
-                        #loop.close()
                         return JsonResponse(dict())
                     else:
-                        #loop.close()
+                        live_game_room, created = LiveGameRoom.objects.get_or_create(
+                            live_room_name=info['room_name'])
+                        player_no = str(live_game_room.playerlist_details.all().count())
+                        if not live_game_room.playerlist_details.filter(user_id=int(user_id)):
+                            player_board_details = PlayerBoardDetail.objects.create(
+                                user=User.objects.get(pk=int(user_id)),
+                                player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
+                            live_game_room.playerlist_details.add(player_board_details)
+                        else:
+                            player_board_details = live_game_room.playerlist_details.get(
+                                user_id=int(user_id))
+                        player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
+                        print(player_board_details_serializer.data)
                         return JsonResponse(result)
                 else:
                     return JsonResponse({"message_type": "JOIN", "status": "{} is already connected".format(request.user.username)})
 
-                #return JsonResponse({"username": request.user.username, "room_name": info['room_name']})
 
             else:
                 user_obj = User.objects.create_user(username='guest_user_{}'.format(datetime.now().time()), password='pass123')
@@ -289,40 +358,52 @@ class JoinRoom(APIView):
                 loop = asyncio.new_event_loop()
                 GlobalMember.uid_loop_dict[str(socket_payload["user_id"])] = loop
                 print('JoinRoom else',GlobalMember.uid_loop_dict)
-                asyncio.set_event_loop(GlobalMember.uid_loop_dict[socket_payload["user_id"]])
+                asyncio.set_event_loop(loop)
                 result = None
                 try:
-                    result = GlobalMember.uid_loop_dict[socket_payload["user_id"]].run_until_complete(coroutine)
+                    result = loop.run_until_complete(coroutine)
                 except Exception as e:
                     print(e)
                 if result is None:
-                    #loop.close()
                     return JsonResponse(dict())
                 else:
-                    #loop.close()
+                    live_game_room, created = LiveGameRoom.objects.get_or_create(
+                        live_room_name=info['room_name'])
+                    player_no = str(live_game_room.playerlist_details.all().count())
+                    if not live_game_room.playerlist_details.filter(user_id=user_obj.id):
+                        player_board_details = PlayerBoardDetail.objects.create(
+                            user=User.objects.get(pk=user_obj.id),
+                            player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
+                        live_game_room.playerlist_details.add(player_board_details)
+                    else:
+                        player_board_details = live_game_room.playerlist_details.get(
+                            user_id=user_obj.id)
+                    player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
+                    print(player_board_details_serializer.data)
                     return JsonResponse(result)
 
-                #return JsonResponse({"username": user_obj.username, "room_name": info['room_name']})
         else:
             return JsonResponse({"data": "Invalid Payload is supplied..",
                              "status_code": status.HTTP_400_BAD_REQUEST,
                              "status": "Fail"})
 
 
-
 class ChatRoom(APIView):
     authentication_classes = (TokenAuthentication,)
-    parser_classes = (JSONParser,)
+    parser_classes = (FormParser,)
     permission_classes = (AllowAny,)
 
     def post(self, request):
-        serializer = ChatRoomSerializer(data=request.data)
+        serializer = ChatRoomSerializer(data=request.POST)
         if serializer.is_valid():
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
             if GlobalMember.uid_loop_dict.get(str(info["user_id"]), None):
-                coroutine = chat_websocket(user_id=info["user_id"])
-                #loop1 = asyncio.new_event_loop()
+                # if info['message_type'] == 'CURRENT_STATE':
+                #     coroutine = current_state_coro(payload=info)
+                # elif info['message_type'] == 'UPDATE_BOARD':
+                #     coroutine = update_board_coro(payload=info)
+                coroutine = chat_websocket(payload=info)
                 print('chatroom',GlobalMember.uid_loop_dict)
                 asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
                 result = None
@@ -332,13 +413,17 @@ class ChatRoom(APIView):
                 except Exception as e:
                     print(e)
                 if result is None:
-                    #loop.close()
                     return JsonResponse(dict())
                 else:
-                    #loop.close()
+                    if result['message_type'] == 'CURRENT_STATE':
+                        live_game_room = LiveGameRoom.objects.get(live_room_name=result['room_name'])
+                        live_game_room_serializer = LiveGameRoomSerializer(live_game_room)
+                        result = live_game_room_serializer.data
+                    elif result['message_type'] == 'UPDATE_BOARD':
+                        result = result
                     return JsonResponse(result)
             else:
-                return JsonResponse({"data": "User with user id {} is not connected.".format(request.data['user_id']),
+                return JsonResponse({"data": "User with user id {} is not connected.".format(str(info["user_id"])),
                                      "status_code": status.HTTP_400_BAD_REQUEST,
                                      "status": "Fail"})
         else:
@@ -346,13 +431,14 @@ class ChatRoom(APIView):
                                  "status_code": status.HTTP_400_BAD_REQUEST,
                                  "status": "Fail"})
 
+
 class LeaveRoom(APIView):
     authentication_classes = (TokenAuthentication,)
-    parser_classes = (JSONParser,)
+    parser_classes = (FormParser,)
     permission_classes = (AllowAny,)
 
     def post(self, request):
-        serializer = ChatRoomSerializer(data=request.data)
+        serializer = ChatRoomSerializer(data=request.POST)
         if serializer.is_valid():
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
