@@ -9,7 +9,7 @@ class GlobalMember:
     uid_ws_dict = {}
     uid_loop_dict = {}
     TOKEN_DATA_PLAYER_DICT = {
-        "0": {"tokenData":[
+        "0": {"0":[
             {"tokenId":0,"rowIndex":6,"columnIndex":1},
             {"tokenId":1,"rowIndex":6,"columnIndex":2},
             {"tokenId":2,"rowIndex":6,"columnIndex":3},
@@ -27,7 +27,7 @@ class GlobalMember:
             {"tokenId":14,"rowIndex":9,"columnIndex":3},
             {"tokenId":15,"rowIndex":9,"columnIndex":4}
             ]},
-        "1": {"tokenData":[
+        "1": {"1":[
             {"tokenId":0,"rowIndex":1,"columnIndex":1},
             {"tokenId":1,"rowIndex":1,"columnIndex":2},
             {"tokenId":2,"rowIndex":1,"columnIndex":3},
@@ -45,7 +45,7 @@ class GlobalMember:
             {"tokenId":14,"rowIndex":4,"columnIndex":3},
             {"tokenId":15,"rowIndex":4,"columnIndex":4}
             ]},
-        "2": {"tokenData":[
+        "2": {"2":[
             {"tokenId":0,"rowIndex":1,"columnIndex":6},
             {"tokenId":1,"rowIndex":1,"columnIndex":7},
             {"tokenId":2,"rowIndex":1,"columnIndex":8},
@@ -63,7 +63,7 @@ class GlobalMember:
             {"tokenId":14,"rowIndex":4,"columnIndex":8},
             {"tokenId":15,"rowIndex":4,"columnIndex":9}
             ]},
-        "3": {"tokenData":[
+        "3": {"3":[
             {"tokenId":0,"rowIndex":6,"columnIndex":6},
             {"tokenId":1,"rowIndex":6,"columnIndex":7},
             {"tokenId":2,"rowIndex":6,"columnIndex":8},
@@ -98,12 +98,13 @@ class KeepMeAlive(Thread):
                 async def ping_pong_cor():
                     self.message['message_type'] = 'PING'
                     await self.ws.send(json.dumps(self.message))
-                    print(await self.ws.recv())
+                    #print(await self.ws.recv())
 
                 coroutine = ping_pong_cor()
                 asyncio.set_event_loop(self.loop)
                 self.loop.run_until_complete(coroutine)
             except Exception as e:
                 print(e)
+                #self.ws = self.ws.connect()
                 self.loop.close()
                 break

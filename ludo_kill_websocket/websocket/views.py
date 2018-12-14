@@ -83,80 +83,6 @@ async def chat_websocket(payload=None):
         await ws.send(data=json.dumps(payload))
         print(">payload send :: {}".format(json.dumps(payload)))
         response = json.loads(await ws.recv())
-        # message_type = None
-        # if response.get('message_type',None) == 'CURRENT_STATE' or response.get('message_type',None) == 'UPDATE_BOARD':
-        #     message_type = response.get('message_type',None)
-        #     if not message_type:
-        #         await ws.send(json.dumps({"message_type": "PING"}))
-        # print('message_type_out:', message_type)
-        # while not message_type:
-        #     response = json.loads(await ws.recv())
-        #     print('chat_websocket_while:', response)
-        #     if response.get('message_type', None) == 'CURRENT_STATE' or response.get('message_type',
-        #                                                                              None) == 'UPDATE_BOARD':
-        #         message_type = response.get('message_type', None)
-        #         if not message_type:
-        #             await ws.send(json.dumps({"message_type": "PING"}))
-        #
-        #     print('message_type_while:', message_type)
-        print("response received < {}".format(response))
-        return response
-    else:
-        return None
-
-
-async def current_state_coro(payload=None):
-    print('chat_websocket:', GlobalMember.uid_ws_dict)
-    ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
-    print('chat_websocket ws', GlobalMember.uid_ws_dict)
-    print(str(ws))
-    if ws is not None:
-        # payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
-        await ws.send(data=json.dumps(payload))
-        print(">payload send :: {}".format(json.dumps(payload)))
-        response = json.loads(await ws.recv())
-        message_type = None
-        if response.get('message_type', None) == 'UPDATE_BOARD':
-            message_type = response.get('message_type', None)
-        else:
-            await ws.send(json.dumps({"message_type": "PING"}))
-        print('message_type_out:', message_type)
-        while not message_type:
-            response = json.loads(await ws.recv())
-            print('chat_websocket_while:', response)
-            if response.get('message_type', None) == 'UPDATE_BOARD':
-                message_type = response.get('message_type', None)
-            else:
-                await ws.send(json.dumps({"message_type": "PING"}))
-
-            print('message_type_while:', message_type)
-        print("response received < {}".format(response))
-        return response
-    else:
-        return None
-
-
-async def update_board_coro(payload=None):
-    print('chat_websocket:', GlobalMember.uid_ws_dict)
-    ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
-    print('chat_websocket ws', GlobalMember.uid_ws_dict)
-    print(str(ws))
-    if ws is not None:
-        # payload = {"x": randrange(10, 20), "y": randrange(30, 40), "z": randrange(50,60)}
-        await ws.send(data=json.dumps(payload))
-        print(">payload send :: {}".format(json.dumps(payload)))
-        response = json.loads(await ws.recv())
-        message_type = None
-        if response.get('message_type', None) == 'CURRENT_STATE':
-            message_type = response.get('message_type', None)
-        print('message_type_out:', message_type)
-        while not message_type:
-            response = json.loads(await ws.recv())
-            print('chat_websocket_while:', response)
-            if response.get('message_type', None) == 'CURRENT_STATE':
-                message_type = response.get('message_type', None)
-
-            print('message_type_while:', message_type)
         print("response received < {}".format(response))
         return response
     else:
@@ -367,19 +293,6 @@ class JoinRoom(APIView):
                 if result is None:
                     return JsonResponse(dict())
                 else:
-                    live_game_room, created = LiveGameRoom.objects.get_or_create(
-                        live_room_name=info['room_name'])
-                    player_no = str(live_game_room.playerlist_details.all().count())
-                    if not live_game_room.playerlist_details.filter(user_id=user_obj.id):
-                        player_board_details = PlayerBoardDetail.objects.create(
-                            user=User.objects.get(pk=user_obj.id),
-                            player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
-                        live_game_room.playerlist_details.add(player_board_details)
-                    else:
-                        player_board_details = live_game_room.playerlist_details.get(
-                            user_id=user_obj.id)
-                    player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
-                    print(player_board_details_serializer.data)
                     return JsonResponse(result)
 
         else:
@@ -399,10 +312,6 @@ class ChatRoom(APIView):
             info = serializer.validated_data
             print('ChatRoom user_id:',info["user_id"])
             if GlobalMember.uid_loop_dict.get(str(info["user_id"]), None):
-                # if info['message_type'] == 'CURRENT_STATE':
-                #     coroutine = current_state_coro(payload=info)
-                # elif info['message_type'] == 'UPDATE_BOARD':
-                #     coroutine = update_board_coro(payload=info)
                 coroutine = chat_websocket(payload=info)
                 print('chatroom',GlobalMember.uid_loop_dict)
                 asyncio.set_event_loop(GlobalMember.uid_loop_dict[str(info["user_id"])])
@@ -415,12 +324,6 @@ class ChatRoom(APIView):
                 if result is None:
                     return JsonResponse(dict())
                 else:
-                    if result['message_type'] == 'CURRENT_STATE':
-                        live_game_room = LiveGameRoom.objects.get(live_room_name=result['room_name'])
-                        live_game_room_serializer = LiveGameRoomSerializer(live_game_room)
-                        result = live_game_room_serializer.data
-                    elif result['message_type'] == 'UPDATE_BOARD':
-                        result = result
                     return JsonResponse(result)
             else:
                 return JsonResponse({"data": "User with user id {} is not connected.".format(str(info["user_id"])),
