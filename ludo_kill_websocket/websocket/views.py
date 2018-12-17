@@ -85,6 +85,7 @@ async def get_current_state(user_id=None):
     else:
         return None
 
+
 async def chat_websocket(payload=None):
     print('chat_websocket:', GlobalMember.uid_ws_dict)
     ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
@@ -314,6 +315,9 @@ class JoinRoom(APIView):
 
 
 class ChatRoom(APIView):
+    '''
+    This API is used by current user (whose turn to play a move) to share his current board information to a group.
+    '''
     authentication_classes = (TokenAuthentication,)
     parser_classes = (FormParser,)
     permission_classes = (AllowAny,)
@@ -348,6 +352,9 @@ class ChatRoom(APIView):
 
 
 class UpdateResult(APIView):
+    '''
+    This API is called by an user to get the updated board information after completion of a move by current user.
+    '''
     authentication_classes = (TokenAuthentication,)
     parser_classes = (FormParser,)
     permission_classes = (AllowAny,)
