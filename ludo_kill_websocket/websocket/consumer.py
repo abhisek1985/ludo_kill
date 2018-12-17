@@ -244,14 +244,17 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
                 self.room_group_name,
                 self.channel_name
             )
-            # Trying to send JOINING message to other users in room_group
+
+            # Accepts an incoming socket request from user
+            await self.accept()
+
+            # Trying to send JOINING message to current user
             user = self.scope["user"]
             message = {'username': user.username, "user_id": user.id, "room_name": self.room_name, "message_type": "JOIN",
                        "status":status.HTTP_200_OK}
 
-            # Accepts an incoming socket request from user
-            await self.accept()
-            result = await self.join_operation(message)
+            # Trying to send BOARD INFO message to current user
+            result = await self.show_my_board(message)
             # await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
             await self.send(text_data=json.dumps({**message, **result}))
         else:
@@ -293,8 +296,8 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         print('receive_json:',content)
         if message.get('message_type', None) == 'PING':
             print('--')
-        elif message.get('message_type', None) == 'UPDATE_BOARD':
-            result = await self.update_board(message)
+        elif message.get('message_type', None) == 'UPDATED_BOARD':
+            result = await self.updated_board_info(message)
             await self.channel_layer.group_send(self.room_group_name, {'type': 'chat.message', 'message': result})
         elif message.get('message_type', None) == 'LEAVE':
             await logout(self.scope)
@@ -308,7 +311,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         await self.send(text_data=json.dumps(message))
 
     @database_sync_to_async
-    def join_operation(self, message=None):
+    def show_my_board(self, message=None):
         print('join_operation_message', message)
         live_game_room, created = LiveGameRoom.objects.get_or_create(live_room_name=self.room_name)
         player_no = str(live_game_room.playerlist_details.all().count())
@@ -323,7 +326,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         return player_board_details_serializer.data
 
     @database_sync_to_async
-    def update_board(self, message=None):
+    def updated_board_info(self, message=None):
         print('update_board', message)
         # TODO: Write the update code for database
         live_game_room = LiveGameRoom.objects.get(live_room_name=self.room_name)
