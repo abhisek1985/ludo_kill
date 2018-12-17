@@ -269,19 +269,19 @@ class JoinRoom(APIView):
                     if result is None:
                         return JsonResponse(dict())
                     else:
-                        live_game_room, created = LiveGameRoom.objects.get_or_create(
-                            live_room_name=info['room_name'])
-                        player_no = str(live_game_room.playerlist_details.all().count())
-                        if not live_game_room.playerlist_details.filter(user_id=int(user_id)):
-                            player_board_details = PlayerBoardDetail.objects.create(
-                                user=User.objects.get(pk=int(user_id)),
-                                player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
-                            live_game_room.playerlist_details.add(player_board_details)
-                        else:
-                            player_board_details = live_game_room.playerlist_details.get(
-                                user_id=int(user_id))
-                        player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
-                        print(player_board_details_serializer.data)
+                        # live_game_room, created = LiveGameRoom.objects.get_or_create(
+                        #     live_room_name=info['room_name'])
+                        # player_no = str(live_game_room.playerlist_details.all().count())
+                        # if not live_game_room.playerlist_details.filter(user_id=int(user_id)):
+                        #     player_board_details = PlayerBoardDetail.objects.create(
+                        #         user=User.objects.get(pk=int(user_id)),
+                        #         player_id=player_no, token_data=str(GlobalMember.TOKEN_DATA_PLAYER_DICT[player_no]))
+                        #     live_game_room.playerlist_details.add(player_board_details)
+                        # else:
+                        #     player_board_details = live_game_room.playerlist_details.get(
+                        #         user_id=int(user_id))
+                        # player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
+                        # print(player_board_details_serializer.data)
                         return JsonResponse(result)
                 else:
                     return JsonResponse({"message_type": "JOIN", "status": "{} is already connected".format(request.user.username)})

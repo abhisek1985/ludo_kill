@@ -251,9 +251,9 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
 
             # Accepts an incoming socket request from user
             await self.accept()
-            # await self.join_operation(message)
+            result = await self.join_operation(message)
             # await self.channel_layer.group_send(self.room_group_name, {'type': 'join.room', 'message': message})
-            await self.send(text_data=json.dumps(message))
+            await self.send(text_data=json.dumps({**message, **result}))
         else:
             # Accept incoming socket request from user
             await self.accept()
@@ -320,7 +320,7 @@ class SimpleChatConsumer(AsyncJsonWebsocketConsumer):
         else:
             player_board_details = live_game_room.playerlist_details.get(user_id=int(message['user_id']))
         player_board_details_serializer = PlayerBoardDetailSerializer(player_board_details)
-        print(player_board_details_serializer.data)
+        return player_board_details_serializer.data
 
     @database_sync_to_async
     def update_board(self, message=None):
