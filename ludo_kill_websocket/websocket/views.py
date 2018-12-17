@@ -67,7 +67,8 @@ async def join_websocket(payload=None):
 
         GlobalMember.uid_ws_dict[payload["user_id"]] = websocket
         print('join_websocket:', GlobalMember.uid_ws_dict)
-        kma = KeepMeAlive(websocket, response, GlobalMember.uid_loop_dict[str(payload["user_id"])])
+        msg = {"username": response.get("username"), "user_id": payload["user_id"], "room_name": response.get("room_name")}
+        kma = KeepMeAlive(websocket, msg, GlobalMember.uid_loop_dict[str(payload["user_id"])])
         kma.start()
         
     return response

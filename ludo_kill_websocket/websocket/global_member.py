@@ -101,10 +101,14 @@ class KeepMeAlive(Thread):
                     #print(await self.ws.recv())
 
                 coroutine = ping_pong_cor()
-                asyncio.set_event_loop(self.loop)
-                self.loop.run_until_complete(coroutine)
+                if self.loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(coroutine, self.loop)
+                    future.result(30)
+                else:
+                    self.loop.run_until_complete(coroutine)
+                #
             except Exception as e:
                 print(e)
-                #self.ws = self.ws.connect()
+                # self.ws = self.ws.connect()
                 self.loop.close()
                 break
