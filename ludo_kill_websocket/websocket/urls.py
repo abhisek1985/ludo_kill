@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import create_user, delete_user, login_user, logout_user, create_room, JoinRoom, ChatRoom, LeaveRoom
+from .views import create_user, delete_user, login_user, logout_user, create_room, JoinRoom, ChatRoom, UpdateResult, LeaveRoom
 
 urlpatterns = [
     path('create_user/', create_user),
@@ -9,5 +9,6 @@ urlpatterns = [
     path('create_room/', create_room),
     path('ws/join_room/', JoinRoom.as_view()),
     path('ws/chat_room/', ChatRoom.as_view()),
+    path('ws/update_result/', UpdateResult.as_view()),
     path('ws/leave_room/', LeaveRoom.as_view())
 ]

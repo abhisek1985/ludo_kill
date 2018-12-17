@@ -23,7 +23,6 @@ class JoinRoomSerializer(serializers.Serializer):
 
 class ChatRoomSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
-    room_name = serializers.CharField(max_length=255, required=True)
     message_type = serializers.CharField(max_length=255, required=True)  # massage_type: CURRENT_STATE, UPDATE_BOARD
     token_data = serializers.CharField(required=False)
 

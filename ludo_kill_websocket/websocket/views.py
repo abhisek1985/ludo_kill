@@ -73,6 +73,17 @@ async def join_websocket(payload=None):
     return response
 
 
+async def get_current_state(user_id=None):
+    ws = GlobalMember.uid_ws_dict.get(user_id, None)
+    print('chat_websocket ws', GlobalMember.uid_ws_dict)
+    print(str(ws))
+    if ws is not None:
+        response = json.loads(await ws.recv())
+        print("response received < {}".format(response))
+        return response
+    else:
+        return None
+
 async def chat_websocket(payload=None):
     print('chat_websocket:', GlobalMember.uid_ws_dict)
     ws = GlobalMember.uid_ws_dict.get(str(payload['user_id']), None)
@@ -333,6 +344,27 @@ class ChatRoom(APIView):
             return JsonResponse({"data": "Invalid Payload is supplied..",
                                  "status_code": status.HTTP_400_BAD_REQUEST,
                                  "status": "Fail"})
+
+
+class UpdateResult(APIView):
+    authentication_classes = (TokenAuthentication,)
+    parser_classes = (FormParser,)
+    permission_classes = (AllowAny,)
+
+    def post(self, request):
+        user_id = str(request.POST["user_id"])
+        loop = GlobalMember.uid_loop_dict.get(user_id, None)
+        if loop and not loop.is_closed():
+            coroutine = get_current_state(user_id=user_id)
+            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(coroutine)
+            return JsonResponse(result)
+        else:
+            return JsonResponse({
+                "data": "User with user_id {} is not connected.".format(user_id),
+                "status_code": status.HTTP_200_OK,
+                "status": "Success"
+            })
 
 
 class LeaveRoom(APIView):
